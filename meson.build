@@ -47,6 +47,10 @@ dep_libevdev = dependency('libevdev', version : '>= 0.4')
 dep_lm = cc.find_library('m', required : false)
 dep_rt = cc.find_library('rt', required : false)
 
+# Include directories
+includes_include = include_directories('include')
+includes_src = include_directories('src')
+
 ############ libwacom configuration ############
 
 have_libwacom = get_option('libwacom')
@@ -78,13 +82,13 @@ udev_hwdb_dir = join_paths(udev_dir, 'hwdb.d')
 executable('libinput-device-group',
 	   'udev/libinput-device-group.c',
 	   dependencies : [dep_udev, dep_libwacom],
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install : true,
 	   install_dir : udev_dir)
 executable('libinput-model-quirks',
 	   'udev/libinput-model-quirks.c',
 	   dependencies : dep_udev,
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install : true,
 	   install_dir : udev_dir)
 
@@ -131,7 +135,8 @@ src_libinput_util = [
 ]
 libinput_util = static_library('libinput-util',
 			       src_libinput_util,
-			       dependencies : dep_udev)
+			       dependencies : dep_udev,
+			       include_directories : includes_include)
 dep_libinput_util = declare_dependency(link_with : libinput_util)
 
 ############ libfilter.a ############
@@ -202,7 +207,7 @@ mapfile = join_paths(meson.source_root(), 'src', 'libinput.sym')
 version_flag = '-Wl,--version-script,@0@'.format(mapfile)
 lib_libinput = shared_library('input',
 		src_libinput,
-		include_directories : include_directories('.'),
+		include_directories : [include_directories('.'), includes_include],
 		dependencies : deps_libinput,
 		version : libinput_so_version,
 		link_args : version_flag,
@@ -355,7 +360,7 @@ tools_shared_sources = [ 'tools/shared.c',
 deps_tools_shared = [ dep_libinput, dep_libevdev ]
 lib_tools_shared = static_library('tools_shared',
 				  tools_shared_sources,
-				  include_directories : include_directories('src'),
+				  include_directories : [includes_src, includes_include],
 				  dependencies : deps_tools_shared)
 dep_tools_shared = declare_dependency(link_with : lib_tools_shared,
 				      dependencies : deps_tools_shared)
@@ -368,7 +373,7 @@ libinput_debug_events_sources = [ 'tools/libinput-debug-events.c' ]
 executable('libinput-debug-events',
 	   libinput_debug_events_sources,
 	   dependencies : deps_tools,
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install_dir : libinput_tool_path,
 	   install : true
 	   )
@@ -383,7 +388,7 @@ libinput_list_devices_sources = [ 'tools/libinput-list-devices.c' ]
 executable('libinput-list-devices',
 	   libinput_list_devices_sources,
 	   dependencies : deps_tools,
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install_dir : libinput_tool_path,
 	   install : true,
 	   )
@@ -398,7 +403,7 @@ libinput_measure_sources = [ 'tools/libinput-measure.c' ]
 executable('libinput-measure',
 	   libinput_measure_sources,
 	   dependencies : deps_tools,
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install_dir : libinput_tool_path,
 	   install : true,
 	   )
@@ -413,7 +418,7 @@ libinput_measure_touchpad_tap_sources = [ 'tools/libinput-measure-touchpad-tap.c
 executable('libinput-measure-touchpad-tap',
 	   libinput_measure_touchpad_tap_sources,
 	   dependencies : deps_tools,
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install_dir : libinput_tool_path,
 	   install : true,
 	   )
@@ -464,7 +469,7 @@ if get_option('debug-gui')
 	executable('libinput-debug-gui',
 		   debug_gui_sources,
 		   dependencies : deps_debug_gui,
-		   include_directories : include_directories('src'),
+		   include_directories : [includes_src, includes_include],
 		   install_dir : libinput_tool_path,
 		   install : true
 		   )
@@ -481,7 +486,7 @@ libinput_sources = [ 'tools/libinput-tool.c' ]
 executable('libinput',
 	   libinput_sources,
 	   dependencies : deps_tools,
-	   include_directories : include_directories ('src'),
+	   include_directories : [includes_src, includes_include],
 	   install : true
 	   )
 configure_file(input : 'tools/libinput.man',
@@ -497,7 +502,7 @@ ptraccel_debug_sources = [ 'tools/ptraccel-debug.c' ]
 executable('ptraccel-debug',
 	   ptraccel_debug_sources,
 	   dependencies : [ dep_libfilter, dep_libinput ],
-	   include_directories : include_directories('src'),
+	   include_directories : [includes_src, includes_include],
 	   install : false
 	   )
 
@@ -612,7 +617,7 @@ if get_option('tests')
 			    join_paths(meson.build_root(), '80-libinput-device-groups.rules'))
 	lib_litest = static_library('litest',
 				    lib_litest_sources,
-				    include_directories : include_directories('src'),
+				    include_directories : [includes_src, includes_include],
 				    dependencies : deps_litest)
 	dep_litest = declare_dependency(link_with : lib_litest,
 					dependencies : deps_litest)
@@ -632,7 +637,7 @@ if get_option('tests')
 	deps_litest_selftest = [dep_litest]
 	test_litest_selftest = executable('test-litest-selftest',
 					  test_litest_selftest_sources,
-					  include_directories : include_directories('src'),
+					  include_directories : [includes_src, includes_include],
 					  dependencies : deps_litest_selftest,
 					  c_args : defs_litest_selftest,
 					  install : false)
