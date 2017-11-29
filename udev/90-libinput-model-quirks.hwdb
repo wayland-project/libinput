@@ -225,8 +225,8 @@ libinput:mouse:input:b0003v046DpC408*
 libinput:name:*Lid Switch*:dmi:*svnMicrosoftCorporation:pnSurface3:*
  LIBINPUT_ATTR_LID_SWITCH_RELIABILITY=write_open
 
-# Surface 3 Type Cover keyboard
-libinput:name:*Microsoft Surface Type Cover Keyboard*:dmi:*svnMicrosoftCorporation:pnSurface3:*
+# Surface Type Cover keyboard
+libinput:name:*Microsoft Surface Type Cover Keyboard*:dmi:*svnMicrosoftCorporation:*
  LIBINPUT_ATTR_KEYBOARD_INTEGRATION=internal
 
 ##########################################
