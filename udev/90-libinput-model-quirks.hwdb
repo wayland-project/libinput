@@ -43,6 +43,9 @@ libinput:name:*AlpsPS/2 ALPS DualPoint TouchPad:fwversion:800
 libinput:name:*AlpsPS/2 ALPS GlidePoint:fwversion:800
  LIBINPUT_ATTR_SIZE_HINT=100x55
 
+libinput:name:*AlpsPS/2 ALPS DualPoint Stick:fwversion:800
+ LIBINPUT_ATTR_TRACKPOINT_RANGE=160
+
 ##########################################
 # Apple
 ##########################################
