@@ -107,6 +107,19 @@ handle_touchpad(struct udev_device *device)
 		handle_touchpad_synaptics(device);
 }
 
+static void
+handle_pointingstick(struct udev_device *device)
+{
+	const char *name = NULL;
+
+	name = prop_value(device, "NAME");
+	if (!name)
+		return;
+
+	if (strstr(name, "AlpsPS/2 ALPS") != NULL)
+		handle_touchpad_alps(device);
+}
+
 int main(int argc, char **argv)
 {
 	int rc = 1;
@@ -129,6 +142,8 @@ int main(int argc, char **argv)
 
 	if (prop_value(device, "ID_INPUT_TOUCHPAD"))
 		handle_touchpad(device);
+	if (prop_value(device, "ID_INPUT_POINTINGSTICK"))
+		handle_pointingstick(device);
 
 	rc = 0;
 

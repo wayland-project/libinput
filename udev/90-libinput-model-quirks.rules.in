@@ -11,19 +11,22 @@
 ACTION!="add|change", GOTO="libinput_model_quirks_end"
 KERNEL!="event*", GOTO="libinput_model_quirks_end"
 
-# Touchpad firmware detection, two-stage process.
+# Firmware detection, two-stage process.
 # First, run the program and import the LIBINPUT_MODEL_FIRMWARE_VERSION
 # environment (if any)
 KERNELS=="*input*", \
   ENV{ID_INPUT_TOUCHPAD}=="1", \
-  IMPORT{program}="@UDEV_TEST_PATH@libinput-model-quirks %S%p"
-
-# Second, match on anything with that env set and import from the hwdb
+  ENV{.DETECT_FWVERSION}="1"
 KERNELS=="*input*", \
-  ENV{ID_INPUT_TOUCHPAD}=="1", \
-  ENV{LIBINPUT_MODEL_FIRMWARE_VERSION}!="", \
+  ENV{ID_INPUT_POINTINGSTICK}=="1", \
+  ENV{.DETECT_FWVERSION}="1"
+ENV{.DETECT_FWVERSION}!="1", GOTO="skip_fwversion"
+
+IMPORT{program}="@UDEV_TEST_PATH@libinput-model-quirks %S%p"
+ENV{LIBINPUT_MODEL_FIRMWARE_VERSION}!="", \
   IMPORT{builtin}="hwdb 'libinput:name:$attr{name}:fwversion:$env{LIBINPUT_MODEL_FIRMWARE_VERSION}'"
 # End of touchpad firmware detection
+LABEL="skip_fwversion"
 
 # libinput:touchpad:<modalias>
 ENV{ID_INPUT_TOUCHPAD}=="1", \
