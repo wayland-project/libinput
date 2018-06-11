@@ -18,6 +18,11 @@ variables:
   BUILDSTRING: 'rm -rf $MESON_BUILDDIR && meson $MESON_BUILDDIR $$MESON_PARAMS && meson configure $MESON_BUILDDIR && ninja -C $MESON_BUILDDIR $$NINJA_ARGS'
   NINJA_ARGS: ''
   MESON_PARAMS: ''
+  RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel gtk3-devel glib2-devel mtdev-devel'
+
+stages:
+  - download
+  - build
 
 .defaults: &defaults
   artifacts:
@@ -29,19 +34,35 @@ variables:
 
 .fedora_install: &fedora_install
   before_script:
-    - dnf update -y
-    - dnf install -y git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel gtk3-devel glib2-devel mtdev-devel
+    - dnf install -y rpm_cache/*
+  after_script:
+    - ls rpm_cache
   cache:
+    key: "$CI_COMMIT_REF_SLUG"
     paths:
-      - /var/cache/dnf/
+      - rpm_cache/
+    policy: pull
 
 .default_build: &default_build
   <<: *defaults
   script:
     - eval $BUILDSTRING
 
+fedora_latest_prep_cache:
+  stage: download
+  image: fedora:latest
+  script:
+    - dnf update -y --downloadonly --downloaddir rpm_cache
+    - dnf install -y --downloadonly --downloaddir rpm_cache $RPMS
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    policy: push
+    paths:
+      - rpm_cache/
+
 # We try all build options in one job
 build-options:
+  stage: build
   image: fedora:latest
   <<: *defaults
   <<: *fedora_install
@@ -49,11 +70,12 @@ build-options:
     - eval $BUILDSTRING
     - MESON_PARAMS="-Dlibwacom=false" eval $BUILDSTRING
     - MESON_PARAMS="-Ddocumentation=false" eval $BUILDSTRING
-#    - MESON_PARAMS="-Ddebug-gui=false" eval $BUILDSTRING
-#    - MESON_PARAMS="-Dtests=false" eval $BUILDSTRING
+    - MESON_PARAMS="-Ddebug-gui=false" eval $BUILDSTRING
+    - MESON_PARAMS="-Dtests=false" eval $BUILDSTRING
 
 
 fedora-latest:
+  stage: build
   image: fedora:latest
   <<: *fedora_install
   <<: *default_build
