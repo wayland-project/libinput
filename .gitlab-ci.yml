@@ -15,14 +15,13 @@
 
 variables:
   MESON_BUILDDIR: builddir
-  BUILDSTRING: 'rm -rf $MESON_BUILDDIR && meson $MESON_BUILDDIR $$MESON_PARAMS && meson configure $MESON_BUILDDIR && ninja -C $MESON_BUILDDIR $$NINJA_ARGS'
   NINJA_ARGS: ''
   MESON_PARAMS: ''
   RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel gtk3-devel glib2-devel mtdev-devel'
 
 stages:
-  - download
-  - build
+  - initial
+  - next
 
 .defaults: &defaults
   artifacts:
@@ -32,24 +31,31 @@ stages:
     paths:
       - $MESON_BUILDDIR/meson-logs
 
-.fedora_install: &fedora_install
+.fedora_install_from_cache: &fedora_install_from_cache
+  stage: next
   before_script:
     - dnf install -y rpm_cache/*
-  after_script:
-    - ls rpm_cache
   cache:
     key: "$CI_COMMIT_REF_SLUG"
     paths:
       - rpm_cache/
     policy: pull
 
+.fedora_install: &fedora_install
+  before_script:
+    - dnf upgrade -y
+    - dnf install -y $RPMS
+
 .default_build: &default_build
   <<: *defaults
   script:
-    - eval $BUILDSTRING
+    - rm -rf $MESON_BUILDDIR
+    - meson $MESON_BUILDDIR $MESON_PARAMS
+    - meson configure $MESON_BUILDDIR
+    - ninja -C $MESON_BUILDDIR $NINJA_ARGS
 
 fedora_latest_prep_cache:
-  stage: download
+  stage: initial
   image: fedora:latest
   script:
     - dnf update -y --downloadonly --downloaddir rpm_cache
@@ -60,28 +66,48 @@ fedora_latest_prep_cache:
     paths:
       - rpm_cache/
 
-# We try all build options in one job
-build-options:
-  stage: build
+build-standard:
   image: fedora:latest
   <<: *defaults
-  <<: *fedora_install
-  script:
-    - eval $BUILDSTRING
-    - MESON_PARAMS="-Dlibwacom=false" eval $BUILDSTRING
-    - MESON_PARAMS="-Ddocumentation=false" eval $BUILDSTRING
-    - MESON_PARAMS="-Ddebug-gui=false" eval $BUILDSTRING
-    - MESON_PARAMS="-Dtests=false" eval $BUILDSTRING
+  <<: *fedora_install_from_cache
+  <<: *default_build
 
-
-fedora-latest:
-  stage: build
+build-nowacom:
   image: fedora:latest
-  <<: *fedora_install
+  variables:
+    MESON_PARAMS: '-Dlibwacom=false'
+  <<: *defaults
+  <<: *fedora_install_from_cache
+  <<: *default_build
+
+build-nodoc:
+  image: fedora:latest
+  variables:
+    MESON_PARAMS: '-Ddocumentation=false'
+  <<: *defaults
+  <<: *fedora_install_from_cache
+  <<: *default_build
+
+build-nogui:
+  image: fedora:latest
+  variables:
+    MESON_PARAMS: '-Ddebug-gui=false'
+  <<: *defaults
+  <<: *fedora_install_from_cache
+  <<: *default_build
+
+build-notests:
+  image: fedora:latest
+  variables:
+    MESON_PARAMS: '-Dtests=false'
+  <<: *defaults
+  <<: *fedora_install_from_cache
   <<: *default_build
 
 fedora-27:
+  stage: initial
   image: fedora:27
+  <<: *defaults
   <<: *fedora_install
   <<: *default_build
 
