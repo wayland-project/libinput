@@ -1,0 +1,65 @@
+# vim: set expandtab shiftwidth=2 tabstop=8 textwidth=0:
+#
+# This is a bit complicated because GitLab only allows one script: per job
+# but we have a bunch of commands we want to re-run for each build. YAML
+# doesn't have anything to append to arrays with templates.
+#
+# We could just define everything as separate job but that would require 
+# pulling docker images && dnf update on every job. That's slow and heavy.
+#
+# So instead we use BUILDSTRING as the main builder and pass what we need through
+# shell variables. The only two that matter:
+#
+# MESON_PARAMS=-Denable-something=true
+# NINJA_ARGS=dist 
+
+variables:
+  MESON_BUILDDIR: builddir
+  BUILDSTRING: 'rm -rf $MESON_BUILDDIR && meson $MESON_BUILDDIR $$MESON_PARAMS && meson configure $MESON_BUILDDIR && ninja -C $MESON_BUILDDIR $$NINJA_ARGS'
+  NINJA_ARGS: ''
+  MESON_PARAMS: ''
+
+.defaults: &defaults
+  artifacts:
+    name: "meson-logs-$CI_JOB_NAME"
+    when: always
+    expire_in: 1 week
+    paths:
+      - $MESON_BUILDDIR/meson-logs
+
+.fedora_install: &fedora_install
+  before_script:
+    - dnf update -y
+    - dnf install -y git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel gtk3-devel glib2-devel mtdev-devel
+  cache:
+    paths:
+      - /var/cache/dnf/
+
+.default_build: &default_build
+  <<: *defaults
+  script:
+    - eval $BUILDSTRING
+
+# We try all build options in one job
+build-options:
+  image: fedora:latest
+  <<: *defaults
+  <<: *fedora_install
+  script:
+    - eval $BUILDSTRING
+    - MESON_PARAMS="-Dlibwacom=false" eval $BUILDSTRING
+    - MESON_PARAMS="-Ddocumentation=false" eval $BUILDSTRING
+#    - MESON_PARAMS="-Ddebug-gui=false" eval $BUILDSTRING
+#    - MESON_PARAMS="-Dtests=false" eval $BUILDSTRING
+
+
+fedora-latest:
+  image: fedora:latest
+  <<: *fedora_install
+  <<: *default_build
+
+fedora-27:
+  image: fedora:27
+  <<: *fedora_install
+  <<: *default_build
+
