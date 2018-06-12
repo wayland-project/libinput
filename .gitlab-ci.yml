@@ -17,7 +17,8 @@ variables:
   MESON_BUILDDIR: builddir
   NINJA_ARGS: ''
   MESON_PARAMS: ''
-  RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel gtk3-devel glib2-devel mtdev-devel'
+  FEDORA_RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel   gtk3-devel   glib2-devel    mtdev-devel'
+  UBUNTU_DEBS: 'git gcc g++     meson check       libudev-dev   libevdev-dev   doxygen graphviz valgrind binutils libwacom-dev   libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev'
 
 stages:
   - docker_prep
@@ -32,28 +33,13 @@ stages:
     paths:
       - $MESON_BUILDDIR/meson-logs
 
-.fedora_install_from_cache: &fedora_install_from_cache
-  stage: next
-  before_script:
-    - dnf install -y rpm_cache/*
-  cache:
-    key: "$CI_COMMIT_REF_SLUG"
-    paths:
-      - rpm_cache/
-    policy: pull
-
-.fedora_install: &fedora_install
-  before_script:
-    - dnf upgrade -y
-    - dnf install -y $RPMS
-
 .ubuntu_install: &ubuntu_install
   before_script:
     - apt-get update
     - apt-get install -y software-properties-common
     - add-apt-repository universe
     - apt-get update
-    - apt-get install -y git gcc g++ meson check libudev-dev libevdev-dev doxygen graphviz valgrind binutils libwacom-dev libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev
+    - apt-get install -y $UBUNTU_DEBS
 
 .default_build: &default_build
   <<: *defaults
@@ -63,7 +49,7 @@ stages:
     - meson configure $MESON_BUILDDIR
     - ninja -C $MESON_BUILDDIR $NINJA_ARGS
 
-.fedora:latest:prep:
+fedora:latest:prep:
   stage: docker_prep
   # When using dind, it's wise to use the overlayfs driver for
   # improved performance.
@@ -72,22 +58,17 @@ stages:
   services:
     - docker:dind
   before_script:
-    - docker info
-    - docker image ls
-  script:
-    - export
     - docker login -u $GITLAB_USER_LOGIN -p $REGISTRY_FREEDESKTOP_TOKEN $CI_REGISTRY
-    - docker build --tag $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF .
+  script:
+    # update the CI image or bootstrap it
+    - python3 prepare_ci_docker_images.py
     - docker push $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF
 
 fedora:latest:test:
   stage: test
-  image: $CI_REGISTRY/$CI_PROJECT_PATH:d24c6c70735e19dcefccd7d5fcbf1e6f4fc057bb
-  script:
-    - rm -rf $MESON_BUILDDIR
-    - meson $MESON_BUILDDIR $MESON_PARAMS
-    - meson configure $MESON_BUILDDIR
-    - ninja -C $MESON_BUILDDIR $NINJA_ARGS
+  image: $CI_REGISTRY/$CI_PROJECT_PATH:latest
+  <<: *defaults
+  <<: *default_build
 
 .fedora_latest_prep_cache:
   stage: initial
@@ -99,7 +80,6 @@ fedora:latest:test:
 .build-standard:
   image: fedora:latest
   <<: *defaults
-  <<: *fedora_install_from_cache
   <<: *default_build
 
 .build-nowacom:
@@ -107,7 +87,6 @@ fedora:latest:test:
   variables:
     MESON_PARAMS: '-Dlibwacom=false'
   <<: *defaults
-  <<: *fedora_install_from_cache
   <<: *default_build
 
 .build-nodoc:
@@ -115,7 +94,6 @@ fedora:latest:test:
   variables:
     MESON_PARAMS: '-Ddocumentation=false'
   <<: *defaults
-  <<: *fedora_install_from_cache
   <<: *default_build
 
 .build-nogui:
@@ -123,7 +101,6 @@ fedora:latest:test:
   variables:
     MESON_PARAMS: '-Ddebug-gui=false'
   <<: *defaults
-  <<: *fedora_install_from_cache
   <<: *default_build
 
 .build-notests:
@@ -131,14 +108,12 @@ fedora:latest:test:
   variables:
     MESON_PARAMS: '-Dtests=false'
   <<: *defaults
-  <<: *fedora_install_from_cache
   <<: *default_build
 
 .fedora-27:
   stage: initial
   image: fedora:27
   <<: *defaults
-  <<: *fedora_install
   <<: *default_build
 
 .ubuntu-17.10:
