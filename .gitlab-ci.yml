@@ -1,29 +1,57 @@
 # vim: set expandtab shiftwidth=2 tabstop=8 textwidth=0:
 #
-# This is a bit complicated because GitLab only allows one script: per job
-# but we have a bunch of commands we want to re-run for each build. YAML
-# doesn't have anything to append to arrays with templates.
+# This is a bit complicated for two reasons:
+# - we really want dnf caching for the images, updating on the test runner for
+#   each job takes forever. So we have one job to cache all the dnf data
+#   and re-use that in the actual images. Still takes forever, but a smaller
+#   version of forever.
 #
-# We could just define everything as separate job but that would require 
-# pulling docker images && dnf update on every job. That's slow and heavy.
+#   GitLab caches aren't suitable for this, too many restrictions. We have one
+#   job A that dnf downloads, then jobs B, C, D that need the cache. Doing this
+#   would only have the cache available for one of those jobs. So instead we
+#   regenerate the docker images with our current dependencies for the master
+#   branches only.
 #
-# So instead we use BUILDSTRING as the main builder and pass what we need through
-# shell variables. The only two that matter:
+# - GitLab only allows one script: set per job
+#   but we have a bunch of commands we need to re-run for each build (meson &&
+#   ninja && etc). YAML cannot merge arrays templates so we're screwed.
 #
-# MESON_PARAMS=-Denable-something=true
-# NINJA_ARGS=dist
+#   So instead we use BUILDSTRING as the main builder and pass what we need through
+#   shell variables. The only two variables that matter:
+#     MESON_PARAMS=-Denable-something=true
+#     NINJA_ARGS=dist ... to run 'ninja -C builddir dist'
+#
+
+# FEDORA:
+#
+# Fedora jobs MUST have fedora-version@ as name prefix, e.g. fedora-27@whatever
+#
+# Example:
+# fedora-28@default-build:
+#   stage: build
+#   <<: *fedora_28_image_prep
+#   <<: *default_build                  # optional, leave out if script: is specified
+#   script:                             # leave out if you only need the default build
+#    - now do what you came to do
+#
+
+stages:
+  - docker_check  # check if the current docker images are up to date
+  - docker_prep   # rebuild the docker images if previous step failed
+  - build       # for actually building things
 
 variables:
   MESON_BUILDDIR: builddir
+  BUILDSTRING: 'rm -rf $MESON_BUILDDIR && meson $MESON_BUILDDIR $$MESON_PARAMS && meson configure $MESON_BUILDDIR && ninja -C $MESON_BUILDDIR $$NINJA_ARGS'
   NINJA_ARGS: ''
   MESON_PARAMS: ''
-  FEDORA_RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel   gtk3-devel   glib2-devel    mtdev-devel'
+  FEDORA_RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel   gtk3-devel   glib2-devel    mtdev-devel  clang-analyzer'
   UBUNTU_DEBS: 'git gcc g++     meson check       libudev-dev   libevdev-dev   doxygen graphviz valgrind binutils libwacom-dev   libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev'
-
-stages:
-  - docker_prep
-  - test
-  - clean
+  FEDORA_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
+  UBUNTU_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
+  # When using dind, it's wise to use the overlayfs driver for
+  # improved performance.
+  DOCKER_DRIVER: overlay2
 
 .defaults: &defaults
   artifacts:
@@ -33,95 +61,298 @@ stages:
     paths:
       - $MESON_BUILDDIR/meson-logs
 
-.ubuntu_install: &ubuntu_install
-  before_script:
-    - apt-get update
-    - apt-get install -y software-properties-common
-    - add-apt-repository universe
-    - apt-get update
-    - apt-get install -y $UBUNTU_DEBS
-
+# parent target for building with the default build commands
 .default_build: &default_build
-  <<: *defaults
   script:
-    - rm -rf $MESON_BUILDDIR
-    - meson $MESON_BUILDDIR $MESON_PARAMS
-    - meson configure $MESON_BUILDDIR
-    - ninja -C $MESON_BUILDDIR $NINJA_ARGS
+    - eval $BUILDSTRING
 
-fedora:latest:prep:
-  stage: docker_prep
-  # When using dind, it's wise to use the overlayfs driver for
-  # improved performance.
+#################################################################
+#                                                               #
+#                     docker check stage                        #
+#                                                               #
+#################################################################
+
+.docker-check: &docker_check
+  stage: docker_check
+  services:
+    - docker:dind
+  script:
+    # get the date of the current image
+    - docker pull $CURRENT_DOCKER_IMAGE
+    - IMG_DATE="$(docker inspect -f '{{ .Created }}' $CURRENT_DOCKER_IMAGE | cut -dT -f1)"
+
+    # get today's date
+    - TODAY=$(date -u +%F)
+    - echo $TODAY $IMG_DATE
+
+    # check if both date are equals
+    - test $IMG_DATE = $TODAY
+
+    # export an artefact telling the next stage that the image is valid
+    - touch .img_ready
+  artifacts:
+    name: image $CURRENT_DOCKER_IMAGE check
+    expire_in: 20 min
+    paths:
+      - .img_ready
+  allow_failure: true
+
+
+# TODO: check that the RPMS/DEBS are all in the current images
+
+fedora:28@docker-check:
   variables:
-    DOCKER_DRIVER: overlay2
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 28
+    # wee need to actually expand $FEDORA_DOCKER_IMAGE or it won't be expanded by itself
+    # (too many levels of indirections)
+    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
+  <<: *docker_check
+
+fedora:27@docker-check:
+  variables:
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 27
+    # wee need to actually expand $FEDORA_DOCKER_IMAGE or it won't be expanded by itself
+    # (too many levels of indirections)
+    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
+  <<: *docker_check
+
+ubuntu:17.10@docker-check:
+  variables:
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "17.10"
+    # wee need to actually expand $UBUNTU_DOCKER_IMAGE or it won't be expanded by itself
+    # (too many levels of indirections)
+    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
+  <<: *docker_check
+
+ubuntu:18.04@docker-check:
+  variables:
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "18.04"
+    # wee need to actually expand $UBUNTU_DOCKER_IMAGE or it won't be expanded by itself
+    # (too many levels of indirections)
+    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
+  <<: *docker_check
+
+
+#################################################################
+#                                                               #
+#                     docker prep stage                         #
+#                                                               #
+#################################################################
+
+#
+# This stage will recreate the docker images only if the previous
+# stage had a build failure, i.e. the image is too old or if it is
+# missing some dependencies.
+#
+.fedora@docker-prep: &fedora_docker_prep
+  stage: docker_prep
   services:
     - docker:dind
   before_script:
     - docker login -u $GITLAB_USER_LOGIN -p $REGISTRY_FREEDESKTOP_TOKEN $CI_REGISTRY
   script:
-    # update the CI image or bootstrap it
-    - python3 prepare_ci_docker_images.py
-    - docker push $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF
+    # if the check was successful, we just skip recreating the docker image
+    - test -e .img_ready && exit 0
 
-fedora:latest:test:
-  stage: test
-  image: $CI_REGISTRY/$CI_PROJECT_PATH:latest
-  <<: *defaults
-  <<: *default_build
+    # create a Dockerfile with our dependencies
+    - echo "FROM fedora:$FEDORA_VERSION" > Dockerfile
+    - echo "WORKDIR /app" >> Dockerfile
+    - echo "RUN dnf upgrade -y ; dnf clean all" >> Dockerfile
+    - echo "RUN dnf install -y $FEDORA_RPMS ; dnf clean all" >> Dockerfile
 
-.fedora_latest_prep_cache:
-  stage: initial
-  image: fedora:latest
+    # create the docker image
+    - docker build --tag $FEDORA_DOCKER_IMAGE .
+
+    # push the docker image to the libinput registry
+    - docker push $FEDORA_DOCKER_IMAGE
+
+fedora:28@docker-prep:
+  variables:
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 28
+  <<: *fedora_docker_prep
+  dependencies:
+    # Note: we can not use $FEDORA_VERSION here
+    - fedora:28@docker-check
+
+fedora:27@docker-prep:
+  variables:
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 27
+  <<: *fedora_docker_prep
+  dependencies:
+    # Note: we can not use $FEDORA_VERSION here
+    - fedora:27@docker-check
+
+# FIXME: we should clean up the apt cache between each run
+.ubuntu@docker-prep: &ubuntu_docker_prep
+  stage: docker_prep
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $GITLAB_USER_LOGIN -p $REGISTRY_FREEDESKTOP_TOKEN $CI_REGISTRY
   script:
-    - dnf update -y --downloadonly --downloaddir rpm_cache
-    - dnf install -y --downloadonly --downloaddir rpm_cache $RPMS
+    # if the check was successful, we just skip recreating the docker image
+    - test -e .img_ready && exit 0
 
-.build-standard:
-  image: fedora:latest
-  <<: *defaults
-  <<: *default_build
+    # create a Dockerfile with our dependencies
+    - echo "FROM ubuntu:$UBUNTU_VERSION" > Dockerfile
+    - echo "WORKDIR /app" >> Dockerfile
+    - echo "RUN apt-get update" >> Dockerfile
+    - echo "RUN apt-get install -y software-properties-common" >> Dockerfile
+    - echo "RUN add-apt-repository universe" >> Dockerfile
+    - echo "RUN apt-get update" >> Dockerfile
+    - echo "RUN apt-get install -y $UBUNTU_DEBS" >> Dockerfile
 
-.build-nowacom:
-  image: fedora:latest
+    # create the docker image
+    - docker build --tag $UBUNTU_DOCKER_IMAGE .
+
+    # push the docker image to the libinput registry
+    - docker push $UBUNTU_DOCKER_IMAGE
+
+ubuntu:17.10@docker-prep:
   variables:
-    MESON_PARAMS: '-Dlibwacom=false'
-  <<: *defaults
-  <<: *default_build
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "17.10"
+  <<: *ubuntu_docker_prep
+  dependencies:
+    # Note: we can not use $UBUNTU_VERSION here
+    - ubuntu:17.10@docker-check
 
-.build-nodoc:
-  image: fedora:latest
+ubuntu:18.04@docker-prep:
   variables:
-    MESON_PARAMS: '-Ddocumentation=false'
-  <<: *defaults
-  <<: *default_build
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "18.04"
+  <<: *ubuntu_docker_prep
+  dependencies:
+    # Note: we can not use $UBUNTU_VERSION here
+    - ubuntu:18.04@docker-check
 
-.build-nogui:
-  image: fedora:latest
+# Add some manual runners to be able to recreate the cache on a day
+# the list of the rpms changed
+
+fedora:28@force-docker-prep:
   variables:
-    MESON_PARAMS: '-Ddebug-gui=false'
-  <<: *defaults
-  <<: *default_build
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 28
+  <<: *fedora_docker_prep
+  when: manual
+  dependencies: []
 
-.build-notests:
-  image: fedora:latest
+fedora:27@force-docker-prep:
   variables:
-    MESON_PARAMS: '-Dtests=false'
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 27
+  <<: *fedora_docker_prep
+  when: manual
+  dependencies: []
+
+ubuntu:17.10@force-docker-prep:
+  variables:
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "17.10"
+  <<: *ubuntu_docker_prep
+  when: manual
+  dependencies: []
+
+ubuntu:18.04@force-docker-prep:
+  variables:
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "18.04"
+  <<: *ubuntu_docker_prep
+  when: manual
+  dependencies: []
+
+#################################################################
+#                                                               #
+#                       build stage                             #
+#                                                               #
+#################################################################
+
+#
+# Fedora
+#
+
+.fedora@template: &fedora_template
+  stage: build
+  image: $FEDORA_DOCKER_IMAGE
   <<: *defaults
+  dependencies: []
+
+.fedora-28@template: &fedora_28_template
+  variables:
+    FEDORA_VERSION: 28
+  <<: *fedora_template
+
+.fedora-27@template: &fedora_27_template
+  variables:
+    FEDORA_VERSION: 27
+  <<: *fedora_template
+
+fedora-28@default-build:
+  <<: *fedora_28_template
   <<: *default_build
 
-.fedora-27:
-  stage: initial
-  image: fedora:27
+fedora-28@build-no-libwacom:
+  <<: *fedora_28_template
+  script:
+    - MESON_PARAMS="-Dlibwacom=false" eval $BUILDSTRING
+    - dnf remove -y libwacom libwacom-devel
+    - MESON_PARAMS="-Dlibwacom=false" eval $BUILDSTRING
+
+fedora-28@build-no-docs:
+  <<: *fedora_28_template
+  script:
+    - MESON_PARAMS="-Ddocumentation=false" eval $BUILDSTRING
+    - dnf remove -y doxygen graphviz
+    - MESON_PARAMS="-Ddocumentation=false" eval $BUILDSTRING
+
+fedora-28@build-no-debug-gui:
+  <<: *fedora_28_template
+  script:
+    - MESON_PARAMS="-Ddebug-gui=false" eval $BUILDSTRING
+    - dnf remove -y gtk3-devel
+    - MESON_PARAMS="-Ddebug-gui=false" eval $BUILDSTRING
+
+fedora-28@build-no-tests:
+  <<: *fedora_28_template
+  script:
+    - MESON_PARAMS="-Ddtests=false" eval $BUILDSTRING
+    - dnf remove -y check-devel
+    - MESON_PARAMS="-Dtests=false" eval $BUILDSTRING
+
+fedora-28@scan-build:
+  <<: *fedora_28_template
+  script:
+    - NINJA_ARGS="scan-build" eval $BUILDSTRING
+    - test ! -d $MESON_BUILDDIR/meson-logs/scanbuild || test $(find $MESON_BUILDDIR/meson-logs/scanbuild -maxdepth 0 ! -empty -exec echo "not empty" \; | wc -l) -eq 0 || (echo "Check scan-build results" && false)
+
+fedora-27@default-build:
+  <<: *fedora_27_template
+  <<: *default_build
+
+#
+# Ubuntu
+#
+
+.ubuntu@template: &ubuntu_template
+  stage: build
+  image: $UBUNTU_DOCKER_IMAGE
   <<: *defaults
+  dependencies: []
+
+ubuntu-17.10@default-build:
+  variables:
+    UBUNTU_VERSION: "17.10"
+  <<: *ubuntu_template
   <<: *default_build
 
-.ubuntu-17.10:
-  image: ubuntu:artful
-  <<: *ubuntu_install
-  <<: *default_build
-
-.ubuntu-18.04:
-  image: ubuntu:bionic
-  <<: *ubuntu_install
+ubuntu-18.04@default-build: 
+  variables:
+    UBUNTU_VERSION: "17.10"
+  <<: *ubuntu_template
   <<: *default_build
