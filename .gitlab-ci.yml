@@ -63,7 +63,7 @@ stages:
     - meson configure $MESON_BUILDDIR
     - ninja -C $MESON_BUILDDIR $NINJA_ARGS
 
-fedora:latest:prep:
+.fedora:latest:prep:
   stage: docker_prep
   # When using dind, it's wise to use the overlayfs driver for
   # improved performance.
@@ -82,7 +82,7 @@ fedora:latest:prep:
 
 fedora:latest:test:
   stage: test
-  image: $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF
+  image: $CI_REGISTRY/$CI_PROJECT_PATH:d24c6c70735e19dcefccd7d5fcbf1e6f4fc057bb
   script:
     - rm -rf $MESON_BUILDDIR
     - meson $MESON_BUILDDIR $MESON_PARAMS
