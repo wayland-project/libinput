@@ -11,7 +11,7 @@
 # shell variables. The only two that matter:
 #
 # MESON_PARAMS=-Denable-something=true
-# NINJA_ARGS=dist 
+# NINJA_ARGS=dist
 
 variables:
   MESON_BUILDDIR: builddir
@@ -20,8 +20,9 @@ variables:
   RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel gtk3-devel glib2-devel mtdev-devel'
 
 stages:
-  - initial
-  - next
+  - docker_prep
+  - test
+  - clean
 
 .defaults: &defaults
   artifacts:
@@ -46,6 +47,14 @@ stages:
     - dnf upgrade -y
     - dnf install -y $RPMS
 
+.ubuntu_install: &ubuntu_install
+  before_script:
+    - apt-get update
+    - apt-get install -y software-properties-common
+    - add-apt-repository universe
+    - apt-get update
+    - apt-get install -y git gcc g++ meson check libudev-dev libevdev-dev doxygen graphviz valgrind binutils libwacom-dev libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev
+
 .default_build: &default_build
   <<: *defaults
   script:
@@ -54,25 +63,46 @@ stages:
     - meson configure $MESON_BUILDDIR
     - ninja -C $MESON_BUILDDIR $NINJA_ARGS
 
-fedora_latest_prep_cache:
+fedora:latest:prep:
+  stage: docker_prep
+  # When using dind, it's wise to use the overlayfs driver for
+  # improved performance.
+  variables:
+    DOCKER_DRIVER: overlay2
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+    - docker image ls
+  script:
+    - export
+    - docker login -u $GITLAB_USER_LOGIN -p $REGISTRY_FREEDESKTOP_TOKEN $CI_REGISTRY
+    - docker build --tag $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF .
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF
+
+fedora:latest:test:
+  stage: test
+  image: $CI_REGISTRY/$CI_PROJECT_PATH:$CI_BUILD_REF
+  script:
+    - rm -rf $MESON_BUILDDIR
+    - meson $MESON_BUILDDIR $MESON_PARAMS
+    - meson configure $MESON_BUILDDIR
+    - ninja -C $MESON_BUILDDIR $NINJA_ARGS
+
+.fedora_latest_prep_cache:
   stage: initial
   image: fedora:latest
   script:
     - dnf update -y --downloadonly --downloaddir rpm_cache
     - dnf install -y --downloadonly --downloaddir rpm_cache $RPMS
-  cache:
-    key: "$CI_COMMIT_REF_SLUG"
-    policy: push
-    paths:
-      - rpm_cache/
 
-build-standard:
+.build-standard:
   image: fedora:latest
   <<: *defaults
   <<: *fedora_install_from_cache
   <<: *default_build
 
-build-nowacom:
+.build-nowacom:
   image: fedora:latest
   variables:
     MESON_PARAMS: '-Dlibwacom=false'
@@ -80,7 +110,7 @@ build-nowacom:
   <<: *fedora_install_from_cache
   <<: *default_build
 
-build-nodoc:
+.build-nodoc:
   image: fedora:latest
   variables:
     MESON_PARAMS: '-Ddocumentation=false'
@@ -88,7 +118,7 @@ build-nodoc:
   <<: *fedora_install_from_cache
   <<: *default_build
 
-build-nogui:
+.build-nogui:
   image: fedora:latest
   variables:
     MESON_PARAMS: '-Ddebug-gui=false'
@@ -96,7 +126,7 @@ build-nogui:
   <<: *fedora_install_from_cache
   <<: *default_build
 
-build-notests:
+.build-notests:
   image: fedora:latest
   variables:
     MESON_PARAMS: '-Dtests=false'
@@ -104,10 +134,19 @@ build-notests:
   <<: *fedora_install_from_cache
   <<: *default_build
 
-fedora-27:
+.fedora-27:
   stage: initial
   image: fedora:27
   <<: *defaults
   <<: *fedora_install
   <<: *default_build
 
+.ubuntu-17.10:
+  image: ubuntu:artful
+  <<: *ubuntu_install
+  <<: *default_build
+
+.ubuntu-18.04:
+  image: ubuntu:bionic
+  <<: *ubuntu_install
+  <<: *default_build
