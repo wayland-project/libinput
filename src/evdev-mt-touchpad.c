@@ -154,12 +154,13 @@ tp_detect_wobbling(struct tp_dispatch *tp,
 {
 	int dx, dy;
 	uint64_t dtime;
+	const struct device_coords* prev_point;
 
 	if (tp->nfingers_down != 1 ||
 	    tp->nfingers_down != tp->old_nfingers_down)
 		return;
 
-	if (tp->hysteresis.enabled)
+	if (tp->hysteresis.enabled || t->history.count == 0)
 		return;
 
 	if (!(tp->queued & TOUCHPAD_EVENT_MOTION)) {
@@ -167,18 +168,12 @@ tp_detect_wobbling(struct tp_dispatch *tp,
 		return;
 	}
 
-	if (t->last_point.x == 0) { /* first invocation */
-		dx = 0;
-		dy = 0;
-	} else {
-		dx = t->last_point.x - t->point.x;
-		dy = t->last_point.y - t->point.y;
-	}
-
+	prev_point = &tp_motion_history_offset(t, 0)->point;
+	dx = prev_point->x - t->point.x;
+	dy = prev_point->y - t->point.y;
 	dtime = time - tp->hysteresis.last_motion_time;
 
 	tp->hysteresis.last_motion_time = time;
-	t->last_point = t->point;
 
 	if ((dx == 0 && dy != 0) || dtime > ms2us(40)) {
 		t->hysteresis.x_motion_history = 0;
