@@ -1523,6 +1523,11 @@ tp_pre_process_state(struct tp_dispatch *tp, uint64_t time)
 	tp_for_each_touch(tp, t) {
 		if (t->state == TOUCH_MAYBE_END)
 			tp_end_touch(tp, t, time);
+
+		// a human can't consciously change position and lift a
+		// finger so fast. Ignore the spurious motion.
+		if (t->state == TOUCH_END && t->history.count > 0)
+			t->point = tp_motion_history_offset(t, 0)->point;
 	}
 
 }
