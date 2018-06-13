@@ -1523,6 +1523,11 @@ tp_pre_process_state(struct tp_dispatch *tp, uint64_t time)
 	tp_for_each_touch(tp, t) {
 		if (t->state == TOUCH_MAYBE_END)
 			tp_end_touch(tp, t, time);
+
+		/* Ignore motion when pressure/touch size fell below the
+		 * threshold, thus ending the touch */
+		if (t->state == TOUCH_END && t->history.count > 0)
+			t->point = tp_motion_history_offset(t, 0)->point;
 	}
 
 }
