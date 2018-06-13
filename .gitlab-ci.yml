@@ -66,6 +66,20 @@ variables:
   script:
     - eval $BUILDSTRING
 
+# special rule to not expose the docker creation runners to other users
+# than those who have set up the CI to push on the registry.
+# Users who have write access to libinput/libinput will have write
+# access to the registry, so the libinput/libinput is a catch-all for
+# our core developers.
+#
+# we can add as many users as we want by adding a new line like:
+#   - $GITLAB_USER_LOGIN == "someone"
+.restrict_docker_creation: &restrict_docker_creation
+  only:
+    variables:
+      - $CI_PROJECT_PATH == "libinput/libinput"
+      - $GITLAB_USER_LOGIN == "bentiss"
+
 #################################################################
 #                                                               #
 #                     docker check stage                        #
@@ -96,6 +110,7 @@ variables:
     paths:
       - .img_ready
   allow_failure: true
+  <<: *restrict_docker_creation
 
 
 # TODO: check that the RPMS/DEBS are all in the current images
@@ -169,6 +184,7 @@ ubuntu:18.04@docker-check:
 
     # push the docker image to the libinput registry
     - docker push $FEDORA_DOCKER_IMAGE
+  <<: *restrict_docker_creation
 
 fedora:28@docker-prep:
   variables:
@@ -213,6 +229,7 @@ fedora:27@docker-prep:
 
     # push the docker image to the libinput registry
     - docker push $UBUNTU_DOCKER_IMAGE
+  <<: *restrict_docker_creation
 
 ubuntu:17.10@docker-prep:
   variables:
