@@ -12,3 +12,11 @@ MatchVendor=0x0002
 MatchProduct=0x0008
 MatchVersion=0x0800
 AttrSizeHint=100x55
+
+[ALPS v8 Trackpoint]
+MatchUdevType=pointingstick
+MatchBus=ps2
+MatchVendor=0x0002
+MatchProduct=0x0008
+MatchVersion=0x0800
+AttrTrackpointRange=160
