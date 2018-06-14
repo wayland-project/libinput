@@ -85,8 +85,9 @@ enum match_flags {
 	M_DMI		= (1 << 4),
 	M_UDEV_TYPE	= (1 << 5),
 	M_DT		= (1 << 6),
+	M_VERSION	= (1 << 7),
 
-	M_LAST		= M_DT,
+	M_LAST		= M_VERSION,
 };
 
 enum bustype {
@@ -121,6 +122,7 @@ struct match {
 	enum bustype bus;
 	uint32_t vendor;
 	uint32_t product;
+	uint32_t version;
 
 	char *dmi;	/* dmi modalias with preceding "dmi:" */
 
@@ -275,6 +277,7 @@ matchflagname(enum match_flags f)
 	case M_BUS:		return "MatchBus";		break;
 	case M_VID:		return "MatchVendor";		break;
 	case M_PID:		return "MatchProduct";		break;
+	case M_VERSION:		return "MatchVersion";		break;
 	case M_DMI:		return "MatchDMIModalias";	break;
 	case M_UDEV_TYPE:	return "MatchUdevType";		break;
 	case M_DT:		return "MatchDeviceTree";	break;
@@ -489,6 +492,16 @@ parse_match(struct quirks_context *ctx,
 			goto out;
 
 		s->match.product = product;
+	} else if (streq(key, "MatchVersion")) {
+		unsigned int version;
+
+		check_set_bit(s, M_VERSION);
+		if (!strneq(value, "0x", 2) ||
+		    !safe_atou_base(value, &version, 16) ||
+		    version > 0xFFFF)
+			goto out;
+
+		s->match.version = version;
 	} else if (streq(key, "MatchDMIModalias")) {
 		check_set_bit(s, M_DMI);
 		if (!strneq(value, "dmi:", 4)) {
@@ -1147,7 +1160,8 @@ match_fill_bus_vid_pid(struct match *m,
 
 	m->product = product;
 	m->vendor = vendor;
-	m->bits |= M_PID|M_VID;
+	m->version = version;
+	m->bits |= M_PID|M_VID|M_VERSION;
 	switch (bus) {
 	case BUS_USB:
 		m->bus = BT_USB;
@@ -1293,6 +1307,10 @@ quirk_match_section(struct quirks_context *ctx,
 			break;
 		case M_PID:
 			if (m->product == s->match.product)
+				matched_flags |= flag;
+			break;
+		case M_VERSION:
+			if (m->version == s->match.version)
 				matched_flags |= flag;
 			break;
 		case M_DMI:
