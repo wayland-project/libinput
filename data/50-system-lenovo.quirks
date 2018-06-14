@@ -66,11 +66,13 @@ MatchName=*ALPS TrackPoint*
 MatchDMIModalias=dmi:*svnLENOVO:*:pvrThinkPadX280:*
 AttrTrackpointRange=70
 
-# Lenovo Thinkpad X1 Yoga disables the keyboard anyway but has the same device
-# use a windows key on the screen and volume rocker on the side (#103749)
-[Lenovo Thinkpad X1 Yoga]
+# Lenovo Thinkpad Yoga (not the consumer versions) disables the keyboard
+# mechanically. We must not disable the keyboard because some keys are
+# still accessible on the screen and volume rocker.
+# Initially #103749 and extended by #106799 comment 7
+[Lenovo Thinkpad Yoga]
 MatchName=AT Translated Set 2 keyboard
-MatchDMIModalias=dmi:*svnLENOVO:*pvrThinkPadX1Yoga1st:*
+MatchDMIModalias=dmi:*svnLENOVO:*pvrThinkPad*Yoga*:*
 ModelTabletModeNoSuspend=1
 
 # Lenovo Carbon X1 6th gen (RMI4 only, PS/2 is broken on this device)
