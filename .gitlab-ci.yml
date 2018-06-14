@@ -115,6 +115,15 @@ variables:
 
 # TODO: check that the RPMS/DEBS are all in the current images
 
+test:
+  stage: docker_check
+  services:
+    - docker:dind
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - export
+
 fedora:28@docker-check:
   variables:
     GIT_STRATEGY: none
