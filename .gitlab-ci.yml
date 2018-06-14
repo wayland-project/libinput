@@ -27,7 +27,7 @@
 stages:
   - docker_check  # check if the current docker images are up to date
   - docker_prep   # rebuild the docker images if previous step failed
-  - build       # for actually building things
+  - build         # for actually building things
 
 variables:
   MESON_BUILDDIR: builddir
@@ -37,8 +37,8 @@ variables:
   UBUNTU_DEBS: 'git gcc g++     meson check       libudev-dev   libevdev-dev   doxygen graphviz valgrind binutils libwacom-dev   libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev'
   FEDORA_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
   UBUNTU_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
-  # When using docker-in-docker (dind), it's wise to use the overlayfs driver for
-  # improved performance.
+  # When using docker-in-docker (dind), it's wise to use the overlayfs driver
+  # for improved performance.
   DOCKER_DRIVER: overlay2
 
 .default_artifacts: &default_artifacts
@@ -82,9 +82,12 @@ variables:
   services:
     - docker:dind
   script:
+    # get the full docker image name (CURRENT_DOCKER_IMAGE still has indirections)
+    - DOCKER_IMAGE=$(eval echo "$CURRENT_DOCKER_IMAGE")
+
     # get the date of the current image
-    - docker pull $CURRENT_DOCKER_IMAGE
-    - IMG_DATE="$(docker inspect -f '{{ .Created }}' $CURRENT_DOCKER_IMAGE | cut -dT -f1)"
+    - docker pull $DOCKER_IMAGE
+    - IMG_DATE="$(docker inspect -f '{{ .Created }}' $DOCKER_IMAGE | cut -dT -f1)"
 
     # get today's date
     - TODAY=$(date -u +%F)
@@ -110,36 +113,28 @@ fedora:28@docker-check:
   variables:
     GIT_STRATEGY: none
     FEDORA_VERSION: 28
-    # wee need to actually expand $FEDORA_DOCKER_IMAGE or it won't be expanded by itself
-    # (too many levels of indirections)
-    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
+    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE
   <<: *docker_check
 
 fedora:27@docker-check:
   variables:
     GIT_STRATEGY: none
     FEDORA_VERSION: 27
-    # wee need to actually expand $FEDORA_DOCKER_IMAGE or it won't be expanded by itself
-    # (too many levels of indirections)
-    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
+    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE
   <<: *docker_check
 
 ubuntu:17.10@docker-check:
   variables:
     GIT_STRATEGY: none
     UBUNTU_VERSION: "17.10"
-    # wee need to actually expand $UBUNTU_DOCKER_IMAGE or it won't be expanded by itself
-    # (too many levels of indirections)
-    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
+    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
   <<: *docker_check
 
 ubuntu:18.04@docker-check:
   variables:
     GIT_STRATEGY: none
     UBUNTU_VERSION: "18.04"
-    # wee need to actually expand $UBUNTU_DOCKER_IMAGE or it won't be expanded by itself
-    # (too many levels of indirections)
-    CURRENT_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
+    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
   <<: *docker_check
 
 
@@ -384,7 +379,10 @@ fedora:28@scan-build:
     FEDORA_VERSION: 28
     NINJA_ARGS: scan-build
   after_script:
-    - test ! -d $MESON_BUILDDIR/meson-logs/scanbuild || test $(find $MESON_BUILDDIR/meson-logs/scanbuild -maxdepth 0 ! -empty -exec echo "not empty" \; | wc -l) -eq 0 || (echo "Check scan-build results" && false)
+    - test ! -d $MESON_BUILDDIR/meson-logs/scanbuild && exit 0
+    - test $(find $MESON_BUILDDIR/meson-logs/scanbuild -maxdepth 0 ! -empty -exec echo "not empty" \; | wc -l) -eq 0 && exit 0
+    - echo "Check scan-build results"
+    - /bin/false
 
 #
 # Ubuntu
