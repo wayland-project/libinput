@@ -171,6 +171,7 @@ ubuntu:18.04@docker-check:
     # push the docker image to the libinput registry
     - docker push $FEDORA_DOCKER_IMAGE
   <<: *restrict_docker_creation
+  when: on_failure
 
 fedora:28@docker-prep:
   variables:
@@ -216,6 +217,7 @@ fedora:27@docker-prep:
     # push the docker image to the libinput registry
     - docker push $UBUNTU_DOCKER_IMAGE
   <<: *restrict_docker_creation
+  when: on_failure
 
 ubuntu:17.10@docker-prep:
   variables:
