@@ -1,9 +1,6 @@
-[AlpsTouchpadDualPoint]
+[ALPS Serial Touchpads]
 MatchUdevType=touchpad
-MatchName=*AlpsPS/2 ALPS DualPoint TouchPad
-ModelALPSTouchpad=1
-
-[AlpsTouchpadGlidePoint]
-MatchUdevType=touchpad
-MatchName=*AlpsPS/2 ALPS GlidePoint
+MatchBus=ps2
+MatchVendor=0x0002
+MatchProduct=0x0008
 ModelALPSTouchpad=1
