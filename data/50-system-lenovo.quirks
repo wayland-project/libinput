@@ -76,3 +76,8 @@ ModelTabletModeNoSuspend=1
 MatchName=Synaptics TM3288-010
 MatchDMIModalias=dmi:*svnLenovo:*pvrThinkPadX1Carbon6th:*
 ModelLenovoCarbonX16th=1
+
+[Lenovo X41 Tablet]
+MatchName=AT Translated Set 2 keyboard
+MatchDMIModalias=dmi:*svnIBM:*pvrThinkPadX41Tablet:*
+ModelTabletModeNoSuspend=1
