@@ -77,17 +77,43 @@ variables:
 #                                                               #
 #################################################################
 
+# we need a minimalist image capable of curl, jq, date and test.
+# instead of using a full fedora and install the dependencies, we
+# can reuse the one from https://github.com/endeveit/docker-jq with
+# the following Dockerfile:
+#   FROM alpine
+#   MAINTAINER Nikita Vershinin <endeveit@gmail.com>
+#
+#   RUN apk add --update --no-cache curl jq
+#
+#   CMD ["sh"]
+
 .docker-check: &docker_check
   stage: docker_check
-  services:
-    - docker:dind
+  image: registry.freedesktop.org/libinput/libinput/jq:latest
   script:
     # get the full docker image name (CURRENT_DOCKER_IMAGE still has indirections)
     - DOCKER_IMAGE=$(eval echo "$CURRENT_DOCKER_IMAGE")
+    - REPOSITORY=$(echo $DOCKER_IMAGE | cut -f2- -d/ | cut -f1 -d:)
+    - TAG=$(echo $DOCKER_IMAGE | cut -f2 -d:)
+
+    # request a token for the registry API
+    - REGISTRY_TOKEN=$(curl https://gitlab.freedesktop.org/jwt/auth --get
+                             --silent --show-error
+                             -d client_id=docker
+                             -d offline_token=true
+                             -d service=container_registry
+                             -d "scope=repository:$REPOSITORY:pull,*"
+                             --fail
+                             --user $CI_REGISTRY_USER:$CI_JOB_TOKEN
+                             | sed -r 's/(\{"token":"|"\})//g')
 
     # get the date of the current image
-    - docker pull $DOCKER_IMAGE
-    - IMG_DATE="$(docker inspect -f '{{ .Created }}' $DOCKER_IMAGE | cut -dT -f1)"
+    - IMG_DATE=$(curl https://$CI_REGISTRY/v2/$REPOSITORY/manifests/$TAG --silent
+                      -H "accept:application/vnd.docker.distribution.manifest.v1+json"
+                      -H "authorization:Bearer $REGISTRY_TOKEN"
+                      | jq -r '[.history[]]|map(.v1Compatibility|fromjson|.created)|sort|reverse|.[0]'
+                      | cut -dT -f1)
 
     - TODAY_SECS=$(date -u +%s)
     - IMG_SECS=$(date -u --date="$IMG_DATE" +%s)
