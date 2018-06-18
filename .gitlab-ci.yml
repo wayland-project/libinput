@@ -180,11 +180,11 @@ ubuntu:18.04@docker-check:
   stage: docker_prep
   services:
     - docker:dind
-  before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     # if the check was successful, we just skip recreating the docker image
     - test -e .img_ready && exit 0
+
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
     # create a Dockerfile with our dependencies
     - echo "FROM fedora:$FEDORA_VERSION" > Dockerfile
@@ -222,11 +222,11 @@ fedora:27@docker-prep:
   stage: docker_prep
   services:
     - docker:dind
-  before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     # if the check was successful, we just skip recreating the docker image
     - test -e .img_ready && exit 0
+
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
     # create a Dockerfile with our dependencies
     - echo "FROM ubuntu:$UBUNTU_VERSION" > Dockerfile
