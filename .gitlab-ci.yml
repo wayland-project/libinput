@@ -27,6 +27,7 @@
 stages:
   - docker_check  # check if the current docker images are up to date
   - docker_prep   # rebuild the docker images if previous step failed
+  - docker_clean  # janitor task to remove unused docker images
   - build         # for actually building things
 
 variables:
@@ -35,8 +36,8 @@ variables:
   MESON_PARAMS: ''
   FEDORA_RPMS: 'git gcc gcc-c++ meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel   gtk3-devel   glib2-devel    mtdev-devel'
   UBUNTU_DEBS: 'git gcc g++     meson check       libudev-dev   libevdev-dev   doxygen graphviz valgrind binutils libwacom-dev   libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev'
-  FEDORA_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION:latest
-  UBUNTU_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION:latest
+  FEDORA_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION
+  UBUNTU_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION
   # When using docker-in-docker (dind), it's wise to use the overlayfs driver
   # for improved performance.
   DOCKER_DRIVER: overlay2
@@ -140,28 +141,28 @@ fedora:28@docker-check:
   variables:
     GIT_STRATEGY: none
     FEDORA_VERSION: 28
-    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE
+    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE:latest
   <<: *docker_check
 
 fedora:27@docker-check:
   variables:
     GIT_STRATEGY: none
     FEDORA_VERSION: 27
-    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE
+    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE:latest
   <<: *docker_check
 
 ubuntu:17.10@docker-check:
   variables:
     GIT_STRATEGY: none
     UBUNTU_VERSION: "17.10"
-    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
+    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE:latest
   <<: *docker_check
 
 ubuntu:18.04@docker-check:
   variables:
     GIT_STRATEGY: none
     UBUNTU_VERSION: "18.04"
-    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
+    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE:latest
   <<: *docker_check
 
 
@@ -193,10 +194,11 @@ ubuntu:18.04@docker-check:
     - echo "RUN dnf install -y $FEDORA_RPMS ; dnf clean all" >> Dockerfile
 
     # create the docker image
-    - docker build --tag $FEDORA_DOCKER_IMAGE .
+    - docker build --tag $FEDORA_DOCKER_IMAGE:latest --tag $FEDORA_DOCKER_IMAGE:$CI_JOB_ID .
 
     # push the docker image to the libinput registry
-    - docker push $FEDORA_DOCKER_IMAGE
+    - docker push $FEDORA_DOCKER_IMAGE:latest
+    - docker push $FEDORA_DOCKER_IMAGE:$CI_JOB_ID
   <<: *restrict_docker_creation
 
 fedora:28@docker-prep:
@@ -238,10 +240,10 @@ fedora:27@docker-prep:
     - echo "RUN apt-get install -y $UBUNTU_DEBS" >> Dockerfile
 
     # create the docker image
-    - docker build --tag $UBUNTU_DOCKER_IMAGE .
+    - docker build --tag $UBUNTU_DOCKER_IMAGE:latest --tag $UBUNTU_DOCKER_IMAGE:$CI_JOB_ID .
 
     # push the docker image to the libinput registry
-    - docker push $UBUNTU_DOCKER_IMAGE
+    - docker push $UBUNTU_DOCKER_IMAGE:latest
   <<: *restrict_docker_creation
 
 ubuntu:17.10@docker-prep:
@@ -299,6 +301,92 @@ ubuntu:18.04@force-docker-prep:
 
 #################################################################
 #                                                               #
+#                     docker clean stage                        #
+#                                                               #
+#################################################################
+
+#
+# This stage will look for the docker images we currently have in
+# the registry and will remove any that are not tagged as 'latest'
+#
+.docker-clean: &docker_clean
+  stage: docker_clean
+  image: registry.freedesktop.org/libinput/libinput/jq:latest
+  script:
+    # get the full docker image name (CURRENT_DOCKER_IMAGE still has indirections)
+    - DOCKER_IMAGE=$(eval echo "$CURRENT_DOCKER_IMAGE")
+    - REPOSITORY=$(echo $DOCKER_IMAGE | cut -f2- -d/)
+
+    # request a token for the registry API
+    - REGISTRY_TOKEN=$(curl https://gitlab.freedesktop.org/jwt/auth --get
+                             --silent --show-error
+                             -d client_id=docker
+                             -d offline_token=true
+                             -d service=container_registry
+                             -d "scope=repository:$REPOSITORY:pull,*"
+                             --fail
+                             --user $CI_REGISTRY_USER:$CI_JOB_TOKEN
+                             | sed -r 's/(\{"token":"|"\})//g')
+
+    # get the digest of the latest image
+    - LATEST_MANIFEST=$(curl https://$CI_REGISTRY/v2/$REPOSITORY/manifests/latest --silent
+                             -H "accept:application/vnd.docker.distribution.manifest.v2+json"
+                             -H "authorization:Bearer $REGISTRY_TOKEN"
+                             --head
+                             | grep -i "Docker-Content-Digest"
+                             | grep -oi "sha256:\w\+")
+
+    # get the list of tags
+    - TAGS=$(curl https://$CI_REGISTRY/v2/$REPOSITORY/tags/list --silent
+                  -H "accept:application/vnd.docker.distribution.manifest.v2+json"
+                  -H "authorization:Bearer $REGISTRY_TOKEN"
+                  | jq -r '.tags[]')
+
+    # iterate over the tags
+    - for tag in $TAGS;
+      do
+        MANIFEST=$(curl https://$CI_REGISTRY/v2/$REPOSITORY/manifests/$tag --silent
+                             -H "accept:application/vnd.docker.distribution.manifest.v2+json"
+                             -H "authorization:Bearer $REGISTRY_TOKEN"
+                             --head
+                             | grep -i "Docker-Content-Digest"
+                             | grep -oi "sha256:\w\+");
+        echo $MANIFEST $LATEST_MANIFEST
+      ;done
+  dependencies: []
+  allow_failure: true
+  <<: *restrict_docker_creation
+
+fedora:28@docker-clean:
+  variables:
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 28
+    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE
+  <<: *docker_clean
+
+fedora:27@docker-clean:
+  variables:
+    GIT_STRATEGY: none
+    FEDORA_VERSION: 27
+    CURRENT_DOCKER_IMAGE: $FEDORA_DOCKER_IMAGE
+  <<: *docker_clean
+
+ubuntu:17.10@docker-clean:
+  variables:
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "17.10"
+    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
+  <<: *docker_clean
+
+ubuntu:18.04@docker-clean:
+  variables:
+    GIT_STRATEGY: none
+    UBUNTU_VERSION: "18.04"
+    CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
+  <<: *docker_clean
+
+#################################################################
+#                                                               #
 #                       build stage                             #
 #                                                               #
 #################################################################
@@ -309,7 +397,7 @@ ubuntu:18.04@force-docker-prep:
 
 .fedora@template: &fedora_template
   stage: build
-  image: $FEDORA_DOCKER_IMAGE
+  image: $FEDORA_DOCKER_IMAGE:latest
   <<: *default_artifacts
   dependencies: []
 
@@ -319,115 +407,115 @@ fedora:27@default-build:
   <<: *fedora_template
   <<: *default_build
 
-.fedora:28@template: &fedora_28_template
-  variables:
-    FEDORA_VERSION: 28
-  <<: *fedora_template
-
-fedora:28@default-build:
-  <<: *fedora_28_template
-  <<: *default_build
-
-# Below jobs are build option combinations. We only
-# run them on one image, they shouldn't fail on one distro
-# when they succeed on another.
-
-fedora:28@build-no-libwacom:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Dlibwacom=false"
-
-fedora:28@build-no-libwacom-nodeps:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Dlibwacom=false"
-  before_script:
-    - dnf remove -y libwacom libwacom-devel
-
-fedora:28@build-no-docs:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Ddocumentation=false"
-
-fedora:28@build-no-docs-nodeps:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Ddocumentation=false"
-  before_script:
-    - dnf remove -y doxygen graphviz
-
-fedora:28@build-no-debuggui:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Ddebug-gui=false"
-
-fedora:28@build-no-debuggui-nodeps:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Ddebug-gui=false"
-  before_script:
-    - dnf remove -y gtk3-devel
-
-fedora:28@build-no-tests:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Dtests=false"
-
-fedora:28@build-no-tests-nodeps:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    MESON_PARAMS: "-Dtests=false"
-  before_script:
-    - dnf remove -y check-devel
-
-fedora:28@scan-build:
-  <<: *fedora_28_template
-  <<: *default_build
-  variables:
-    FEDORA_VERSION: 28
-    NINJA_ARGS: scan-build
-  before_script:
-    - dnf install -y clang-analyzer findutils
-  after_script:
-    - test ! -d $MESON_BUILDDIR/meson-logs/scanbuild && exit 0
-    - test $(find $MESON_BUILDDIR/meson-logs/scanbuild -maxdepth 0 ! -empty -exec echo "not empty" \; | wc -l) -eq 0 && exit 0
-    - echo "Check scan-build results"
-    - /bin/false
-
-#
-# Ubuntu
-#
-
-.ubuntu@template: &ubuntu_template
-  stage: build
-  image: $UBUNTU_DOCKER_IMAGE
-  <<: *default_artifacts
-  dependencies: []
-
-ubuntu:17.10@default-build:
-  variables:
-    UBUNTU_VERSION: "17.10"
-  <<: *ubuntu_template
-  <<: *default_build
-
-ubuntu:18.04@default-build:
-  variables:
-    UBUNTU_VERSION: "17.10"
-  <<: *ubuntu_template
-  <<: *default_build
+# .fedora:28@template: &fedora_28_template
+#   variables:
+#     FEDORA_VERSION: 28
+#   <<: *fedora_template
+# 
+# fedora:28@default-build:
+#   <<: *fedora_28_template
+#   <<: *default_build
+# 
+# # Below jobs are build option combinations. We only
+# # run them on one image, they shouldn't fail on one distro
+# # when they succeed on another.
+# 
+# fedora:28@build-no-libwacom:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Dlibwacom=false"
+# 
+# fedora:28@build-no-libwacom-nodeps:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Dlibwacom=false"
+#   before_script:
+#     - dnf remove -y libwacom libwacom-devel
+# 
+# fedora:28@build-no-docs:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Ddocumentation=false"
+# 
+# fedora:28@build-no-docs-nodeps:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Ddocumentation=false"
+#   before_script:
+#     - dnf remove -y doxygen graphviz
+# 
+# fedora:28@build-no-debuggui:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Ddebug-gui=false"
+# 
+# fedora:28@build-no-debuggui-nodeps:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Ddebug-gui=false"
+#   before_script:
+#     - dnf remove -y gtk3-devel
+# 
+# fedora:28@build-no-tests:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Dtests=false"
+# 
+# fedora:28@build-no-tests-nodeps:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     MESON_PARAMS: "-Dtests=false"
+#   before_script:
+#     - dnf remove -y check-devel
+# 
+# fedora:28@scan-build:
+#   <<: *fedora_28_template
+#   <<: *default_build
+#   variables:
+#     FEDORA_VERSION: 28
+#     NINJA_ARGS: scan-build
+#   before_script:
+#     - dnf install -y clang-analyzer findutils
+#   after_script:
+#     - test ! -d $MESON_BUILDDIR/meson-logs/scanbuild && exit 0
+#     - test $(find $MESON_BUILDDIR/meson-logs/scanbuild -maxdepth 0 ! -empty -exec echo "not empty" \; | wc -l) -eq 0 && exit 0
+#     - echo "Check scan-build results"
+#     - /bin/false
+# 
+# #
+# # Ubuntu
+# #
+# 
+# .ubuntu@template: &ubuntu_template
+#   stage: build
+#   image: $UBUNTU_DOCKER_IMAGE:latest
+#   <<: *default_artifacts
+#   dependencies: []
+# 
+# ubuntu:17.10@default-build:
+#   variables:
+#     UBUNTU_VERSION: "17.10"
+#   <<: *ubuntu_template
+#   <<: *default_build
+# 
+# ubuntu:18.04@default-build:
+#   variables:
+#     UBUNTU_VERSION: "17.10"
+#   <<: *ubuntu_template
+#   <<: *default_build
