@@ -656,7 +656,7 @@ libinput_now(struct libinput *libinput)
 }
 
 static inline struct device_float_coords
-device_delta(struct device_coords a, struct device_coords b)
+device_delta(const struct device_coords a, const struct device_coords b)
 {
 	struct device_float_coords delta;
 
@@ -667,7 +667,7 @@ device_delta(struct device_coords a, struct device_coords b)
 }
 
 static inline struct device_float_coords
-device_average(struct device_coords a, struct device_coords b)
+device_average(const struct device_coords a, const struct device_coords b)
 {
 	struct device_float_coords average;
 
@@ -678,7 +678,7 @@ device_average(struct device_coords a, struct device_coords b)
 }
 
 static inline struct device_float_coords
-device_float_delta(struct device_float_coords a, struct device_float_coords b)
+device_float_delta(const struct device_float_coords a, const struct device_float_coords b)
 {
 	struct device_float_coords delta;
 
@@ -689,7 +689,7 @@ device_float_delta(struct device_float_coords a, struct device_float_coords b)
 }
 
 static inline struct device_float_coords
-device_float_average(struct device_float_coords a, struct device_float_coords b)
+device_float_average(const struct device_float_coords a, const struct device_float_coords b)
 {
 	struct device_float_coords average;
 
@@ -700,25 +700,25 @@ device_float_average(struct device_float_coords a, struct device_float_coords b)
 }
 
 static inline bool
-device_float_is_zero(struct device_float_coords coords)
+device_float_is_zero(const struct device_float_coords coords)
 {
 	return coords.x == 0.0 && coords.y == 0.0;
 }
 
 static inline double
-normalized_length(struct normalized_coords norm)
+normalized_length(const struct normalized_coords norm)
 {
 	return hypot(norm.x, norm.y);
 }
 
 static inline bool
-normalized_is_zero(struct normalized_coords norm)
+normalized_is_zero(const struct normalized_coords norm)
 {
 	return norm.x == 0.0 && norm.y == 0.0;
 }
 
 static inline double
-length_in_mm(struct phys_coords mm)
+length_in_mm(const struct phys_coords mm)
 {
 	return hypot(mm.x, mm.y);
 }
@@ -781,7 +781,7 @@ xy_get_direction(double x, double y)
 }
 
 static inline uint32_t
-phys_get_direction(struct phys_coords mm)
+phys_get_direction(const struct phys_coords mm)
 {
 	return xy_get_direction(mm.x, mm.y);
 }
@@ -791,7 +791,7 @@ phys_get_direction(struct phys_coords mm)
  * assumption: coordinates are normalized to one axis resolution.
  */
 static inline uint32_t
-device_float_get_direction(struct device_float_coords coords)
+device_float_get_direction(const struct device_float_coords coords)
 {
 	return xy_get_direction(coords.x, coords.y);
 }
