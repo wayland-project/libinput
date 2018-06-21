@@ -24,6 +24,7 @@
 # DEALINGS IN THE SOFTWARE.
 #
 
+import os
 import sys
 import subprocess
 import argparse
@@ -221,10 +222,15 @@ class Device(object):
         sys.exit(1)
 
     def _init_thresholds_from_quirks(self):
-        # FIXME: this uses the system-installed version
-        # but we should really auto-detect when this is started
-        # from the builddir
-        command = ['libinput', 'list-quirks', self.path]
+        # This is replaced for the version in builddir but left as-is for
+        # the installed version. For the builddir one we need to run the
+        # builddir list-quirks
+        builddir = '@BUILDDIR@'
+        if builddir != '@' + 'BUILDDIR' + '@':
+            command = [os.path.join(builddir, 'libinput-list-quirks')]
+        else:
+            command = ['libinput', 'list-quirks']
+        command.append(self.path)
         cmd = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if cmd.returncode != 0:
             print("Error querying quirks: {}".format(cmd.stderr.decode('utf-8')), file=sys.stderr)

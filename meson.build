@@ -541,16 +541,34 @@ configure_file(input : 'tools/libinput-measure-touchpad-tap.man',
 	       install_dir : join_paths(get_option('mandir'), 'man1')
 	       )
 
+config_builddir = configuration_data()
+config_builddir.set('BUILDDIR', meson.build_root())
+# libinput-measure-touchpad-pressure gets built but we install_data the
+# source instead. The built file is the one that uses the local list-quirks
+# and should be used for debugging.
 install_data('tools/libinput-measure-touchpad-pressure',
 	     install_dir : libinput_tool_path)
+configure_file(input: 'tools/libinput-measure-touchpad-pressure',
+	       output: 'libinput-measure-touchpad-pressure',
+	       configuration : config_builddir
+	       )
+
 configure_file(input : 'tools/libinput-measure-touchpad-pressure.man',
 	       output : 'libinput-measure-touchpad-pressure.1',
 	       configuration : man_config,
 	       install : true,
 	       install_dir : join_paths(get_option('mandir'), 'man1')
 	       )
+# libinput-measure-touch-size gets built but we install_data the source
+# instead. The built file is the one that uses the local list-quirks and
+# should be used for debugging.
 install_data('tools/libinput-measure-touch-size',
 	     install_dir : libinput_tool_path)
+configure_file(input: 'tools/libinput-measure-touch-size',
+	       output: 'libinput-measure-touch-size',
+	       configuration : config_builddir
+	       )
+
 configure_file(input : 'tools/libinput-measure-touch-size.man',
 	       output : 'libinput-measure-touch-size.1',
 	       configuration : man_config,
