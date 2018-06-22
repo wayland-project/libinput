@@ -42,12 +42,14 @@ variables:
   ###############################################################################
   FEDORA_RPMS: 'git gcc gcc-c++ pkgconf-pkg-config meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel   gtk3-devel   glib2-devel    mtdev-devel'
   UBUNTU_DEBS: 'git gcc g++     pkg-config         meson check       libudev-dev   libevdev-dev   doxygen graphviz valgrind binutils libwacom-dev   libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev'
+  ARCH_PKGS:   'git gcc         pkgconfig          meson check       libsystemd    libevdev       doxygen graphviz valgrind binutils libwacom                     gtk3                        mtdev      '
   ############################ end of package lists #############################
   MESON_BUILDDIR: builddir
   NINJA_ARGS: ''
   MESON_PARAMS: ''
   FEDORA_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION
   UBUNTU_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION
+  ARCH_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/arch/rolling
   # When using docker-in-docker (dind), it's wise to use the overlayfs driver
   # for improved performance.
   DOCKER_DRIVER: overlay2
@@ -175,6 +177,11 @@ ubuntu:18.04@docker-check:
     CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE:latest
   <<: *docker_check
 
+arch:rolling@docker-check:
+  variables:
+    GIT_STRATEGY: none
+    CURRENT_DOCKER_IMAGE: $ARCH_DOCKER_IMAGE:rolling
+  <<: *docker_check
 
 #################################################################
 #                                                               #
@@ -275,6 +282,38 @@ ubuntu:18.04@docker-prep:
     # Note: we can not use $UBUNTU_VERSION here
     - ubuntu:18.04@docker-check
 
+.arch@docker-prep: &arch_docker_prep
+  stage: docker_prep
+  services:
+    - docker:dind
+  script:
+    # if the check was successful, we just skip recreating the docker image
+    - test -e .img_ready && exit 0
+
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+    # create a Dockerfile with our dependencies
+    - echo "FROM base/archlinux" > Dockerfile
+    - echo "WORKDIR /app" >> Dockerfile
+    - echo "RUN pacman -S --refresh; pacman -S --sysupgrade --noconfirm; pacman -S --clean --noconfirm" >> Dockerfile
+    - echo "RUN pacman -S --noconfirm $ARCH_PKGS; pacman -S --clean --noconfirm" >> Dockerfile
+
+    # create the docker image
+    - docker build --tag $ARCH_DOCKER_IMAGE:latest --tag $ARCH_DOCKER_IMAGE:$CI_JOB_ID .
+
+    # push the docker image to the libinput registry
+    - docker push $ARCH_DOCKER_IMAGE:latest
+    - docker push $ARCH_DOCKER_IMAGE:$CI_JOB_ID
+  <<: *restrict_docker_creation
+
+arch:rolling@docker-prep:
+  variables:
+    GIT_STRATEGY: none
+  <<: *arch_docker_prep
+  dependencies:
+    - arch:rolling@docker-check
+
+
 # Add some manual runners to be able to recreate the cache on a day
 # the list of the rpms changed
 
@@ -307,6 +346,13 @@ ubuntu:18.04@force-docker-prep:
     GIT_STRATEGY: none
     UBUNTU_VERSION: "18.04"
   <<: *ubuntu_docker_prep
+  when: manual
+  dependencies: []
+
+arch:rolling@force-docker-prep:
+  variables:
+    GIT_STRATEGY: none
+  <<: *arch_docker_prep
   when: manual
   dependencies: []
 
@@ -410,6 +456,12 @@ ubuntu:18.04@docker-clean:
     GIT_STRATEGY: none
     UBUNTU_VERSION: "18.04"
     CURRENT_DOCKER_IMAGE: $UBUNTU_DOCKER_IMAGE
+  <<: *docker_clean
+
+arch:rolling@docker-clean:
+  variables:
+    GIT_STRATEGY: none
+    CURRENT_DOCKER_IMAGE: $ARCH_DOCKER_IMAGE
   <<: *docker_clean
 
 #################################################################
@@ -553,4 +605,17 @@ ubuntu:18.04@default-build:
   variables:
     UBUNTU_VERSION: "17.10"
   <<: *ubuntu_template
+  <<: *default_build
+
+#
+# Arch
+#
+.arch@template: &arch_template
+  stage: build
+  image: $ARCH_DOCKER_IMAGE:latest
+  <<: *default_artifacts
+  dependencies: []
+
+arch:rolling@default-build:
+  <<: *arch_template
   <<: *default_build
