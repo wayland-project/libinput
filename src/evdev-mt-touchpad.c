@@ -842,9 +842,6 @@ tp_palm_detect_tool_triggered(struct tp_dispatch *tp,
 		 !t->is_tool_palm)
 		t->palm.state = PALM_NONE;
 
-	if (t->palm.state == PALM_TOOL_PALM)
-		tp_stop_actions(tp, time);
-
 	return t->palm.state == PALM_TOOL_PALM;
 }
 
