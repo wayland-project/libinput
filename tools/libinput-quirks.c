@@ -162,13 +162,16 @@ main(int argc, char **argv)
 
 	/* Overriding the data dir means no custom override file */
 	if (!data_path) {
+#ifdef MESON_BUILD_ROOT
 		char *builddir;
 
 		builddir = tools_execdir_is_builddir();
 		if (builddir) {
 			data_path = LIBINPUT_DATA_SRCDIR;
 			free(builddir);
-		} else {
+		} else
+#endif
+		{
 			data_path = LIBINPUT_DATA_DIR;
 			override_file = LIBINPUT_DATA_OVERRIDE_FILE;
 		}

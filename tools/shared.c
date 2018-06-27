@@ -473,6 +473,8 @@ out:
 char *
 tools_execdir_is_builddir(void)
 {
+	char *dir = NULL;
+#ifdef MESON_BUILD_ROOT
 	char execdir[PATH_MAX] = {0};
 	char *pathsep;
 	ssize_t sz;
@@ -493,7 +495,9 @@ tools_execdir_is_builddir(void)
 	if (!streq(execdir, MESON_BUILD_ROOT))
 		return NULL;
 
-	return safe_strdup(execdir);
+	dir = safe_strdup(execdir);
+#endif
+	return dir;
 }
 
 static inline void
