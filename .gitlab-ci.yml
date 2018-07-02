@@ -627,3 +627,19 @@ ubuntu:18.04@default-build:
 arch:rolling@default-build:
   <<: *arch_template
   <<: *default_build
+
+#################################################################
+#                                                               #
+#                documentation build stage                      #
+#                                                               #
+#################################################################
+
+# Do not rename this job, wayland-web relies on it
+docbuild:
+  <<: *fedora_28_template
+  <<: *default_build
+  artifacts:
+    when: on_success
+    expire_in: 1 week
+    paths:
+      - $MESON_BUILDDIR/html
