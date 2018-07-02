@@ -28,6 +28,7 @@ stages:
   - docker_check  # check if the current docker images are up to date
   - docker_prep   # rebuild the docker images if previous step failed
   - build         # for actually building things
+  - deploy        # 'deploying', i.e. documentation build
 
 variables:
   ###############################################################################
@@ -627,3 +628,20 @@ ubuntu:18.04@default-build:
 arch:rolling@default-build:
   <<: *arch_template
   <<: *default_build
+
+#################################################################
+#                                                               #
+#                documentation build stage                      #
+#                                                               #
+#################################################################
+
+# Do not rename this job, wayland-web relies on it
+docbuild:
+  stage: deploy
+  <<: *fedora_28_template
+  <<: *default_build
+  artifacts:
+    when: on_success
+    expire_in: 1 week
+    paths:
+      - $MESON_BUILDDIR/html
