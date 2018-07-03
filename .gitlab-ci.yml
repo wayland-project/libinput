@@ -139,7 +139,7 @@ variables:
     # export an artefact telling the next stage that the image is valid
     - touch .img_ready
   artifacts:
-    name: image $CURRENT_DOCKER_IMAGE check
+    name: image-$CURRENT_DOCKER_IMAGE-check
     expire_in: 20 min
     paths:
       - .img_ready
