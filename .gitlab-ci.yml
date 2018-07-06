@@ -648,6 +648,9 @@ wayland-web:
   only:
     refs:
       - master
+    variables:
+      # Note: this is a set of logical OR, not AND
+      - $CI_PROJECT_PATH == "libinput/libinput"
   dependencies:
   variables:
     DOT: "%2E"
