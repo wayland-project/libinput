@@ -5,9 +5,9 @@ MatchName=*Lid Switch*
 MatchDMIModalias=dmi:*svnMicrosoftCorporation:pnSurface3:*
 AttrLidSwitchReliability=write_open
 
-[Microsoft Surface 3 Type Cover Keyboard]
+[Microsoft Surface Type Cover Keyboard]
 MatchName=*Microsoft Surface Type Cover Keyboard*
-MatchDMIModalias=dmi:*svnMicrosoftCorporation:pnSurface3:*
+MatchDMIModalias=dmi:*svnMicrosoftCorporation:*
 AttrKeyboardIntegration=internal
 
 [Microsoft Nano Transceiver v2.0]
