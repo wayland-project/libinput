@@ -173,6 +173,34 @@ litest_groups_rules_file = configure_file(input : 'udev/80-libinput-device-group
 	       install : false,
 	       configuration : litest_udev_rules_config)
 
+############ libepoll-shim (BSD) ############
+
+if cc.has_header_symbol('sys/epoll.h', 'epoll_create1', prefix : prefix)
+	# epoll is built in (Linux, illumos)
+	dep_libepoll = declare_dependency()
+else
+	# epoll is implemented in userspace by libepoll-shim (FreeBSD)
+	epoll_dir = get_option('epoll-dir')
+	if epoll_dir == ''
+		epoll_dir = get_option('prefix')
+	endif
+	includes_epoll = include_directories(join_paths(epoll_dir, 'include/libepoll-shim'))
+	dep_epoll_lib = cc.find_library('epoll-shim', dirs : join_paths(epoll_dir, 'lib'))
+	code = '''
+	#include <sys/epoll.h>
+	int main(void) { epoll_create1(0); }
+	'''
+	if not cc.links(code,
+		name : 'libepoll-shim check',
+		dependencies : dep_epoll_lib,
+		include_directories : includes_epoll) # note: wants an include_directories object
+		error('No built-in epoll or libepoll-shim found.')
+	endif
+	dep_libepoll = declare_dependency(
+		include_directories : includes_epoll,
+		dependencies : dep_epoll_lib)
+endif
+
 ############ libinput-util.a ############
 src_libinput_util = [
 		'src/libinput-util.c',
@@ -286,6 +314,7 @@ deps_libinput = [
 	dep_mtdev,
 	dep_udev,
 	dep_libevdev,
+	dep_libepoll,
 	dep_lm,
 	dep_rt,
 	dep_libwacom,

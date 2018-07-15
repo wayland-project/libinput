@@ -2,6 +2,10 @@ option('udev-dir',
        type: 'string',
        value: '',
        description: 'udev base directory [default=$prefix/lib/udev]')
+option('epoll-dir',
+       type: 'string',
+       value: '',
+       description: 'libepoll-shim base directory (for non-Linux OS) [default=$prefix]')
 option('libwacom',
        type: 'boolean',
        value: true,
