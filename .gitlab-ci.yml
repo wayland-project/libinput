@@ -357,7 +357,6 @@ freebsd:11.2@docker-prep:
     # Note: we can not use $FREEBSD_VERSION here
     - freebsd:11.2@docker-check
 
-
 # Add some manual runners to be able to recreate the cache on a day
 # the list of the rpms changed
 
@@ -703,7 +702,6 @@ arch:rolling@default-build:
 freebsd:11.2@default-build:
   <<: *freebsd_template
   <<: *default_build
-
 
 #
 # deploy
