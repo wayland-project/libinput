@@ -192,13 +192,13 @@ else
 	'''
 	if not cc.links(code,
 		name : 'libepoll-shim check',
-		dependencies : dep_epoll_lib,
+		dependencies : [dep_epoll_lib, dep_rt],
 		include_directories : includes_epoll) # note: wants an include_directories object
 		error('No built-in epoll or libepoll-shim found.')
 	endif
 	dep_libepoll = declare_dependency(
 		include_directories : includes_epoll,
-		dependencies : dep_epoll_lib)
+		dependencies : [dep_epoll_lib, dep_rt])
 endif
 
 ############ libinput-util.a ############
