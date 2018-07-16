@@ -44,6 +44,8 @@ variables:
   FEDORA_RPMS: 'git gcc gcc-c++ pkgconf-pkg-config meson check-devel libudev-devel libevdev-devel doxygen graphviz valgrind binutils libwacom-devel cairo-devel   gtk3-devel   glib2-devel    mtdev-devel'
   UBUNTU_DEBS: 'git gcc g++     pkg-config         meson check       libudev-dev   libevdev-dev   doxygen graphviz valgrind binutils libwacom-dev   libcairo2-dev libgtk-3-dev libglib2.0-dev libmtdev-dev'
   ARCH_PKGS:   'git gcc         pkgconfig          meson check       libsystemd    libevdev       doxygen graphviz valgrind binutils libwacom                     gtk3                        mtdev      '
+  FREEBSD_BUILD_PKGS: 'meson'
+  FREEBSD_PKGS: 'libepoll-shim                                       libudev-devd  libevdev                                          libwacom                     gtk3                        libmtdev   '
   ############################ end of package lists #############################
   MESON_BUILDDIR: "build dir"
   NINJA_ARGS: 'test'
@@ -51,6 +53,7 @@ variables:
   FEDORA_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/fedora/$FEDORA_VERSION
   UBUNTU_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/ubuntu/$UBUNTU_VERSION
   ARCH_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/arch/rolling
+  FREEBSD_DOCKER_IMAGE: $CI_REGISTRY/libinput/$CI_PROJECT_NAME/freebsd/11.2
   # Until we have a VM with full access, we cannot run the test suite runner
   SKIP_LIBINPUT_TEST_SUITE_RUNNER: 1
   # When using docker-in-docker (dind), it's wise to use the overlayfs driver
@@ -186,6 +189,12 @@ arch:rolling@docker-check:
     CURRENT_DOCKER_IMAGE: $ARCH_DOCKER_IMAGE:latest
   <<: *docker_check
 
+freebsd:11.2@docker-check:
+  variables:
+    GIT_STRATEGY: none
+    CURRENT_DOCKER_IMAGE: $FREEBSD_DOCKER_IMAGE:latest
+  <<: *docker_check
+
 #################################################################
 #                                                               #
 #                     docker prep stage                         #
@@ -316,6 +325,38 @@ arch:rolling@docker-prep:
   dependencies:
     - arch:rolling@docker-check
 
+.freebsd@docker-prep: &freebsd_docker_prep
+  stage: docker_prep
+  services:
+    - docker:dind
+  script:
+    # if the check was successful, we just skip recreating the docker image
+    - test -e .img_ready && exit 0
+
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+    # create a Dockerfile with our dependencies
+    - echo "FROM myfreeweb/freebsd-cross:latest" > Dockerfile
+    - echo "WORKDIR /app" >> Dockerfile
+    - echo "RUN apk add --no-cache $FREEBSD_BUILD_PKGS" >> Dockerfile
+    - echo "RUN pkg -r /freebsd install -y $FREEBSD_PKGS" >> Dockerfile
+
+    # create the docker image
+    - docker build --tag $FREEBSD_DOCKER_IMAGE:latest --tag $FREEBSD_DOCKER_IMAGE:$CI_JOB_ID .
+
+    # push the docker image to the libinput registry
+    - docker push $FREEBSD_DOCKER_IMAGE:latest
+    - docker push $FREEBSD_DOCKER_IMAGE:$CI_JOB_ID
+  <<: *restrict_docker_creation
+
+freebsd:11.2@docker-prep:
+  variables:
+    GIT_STRATEGY: none
+  <<: *freebsd_docker_prep
+  dependencies:
+    # Note: we can not use $FREEBSD_VERSION here
+    - freebsd:11.2@docker-check
+
 
 # Add some manual runners to be able to recreate the cache on a day
 # the list of the rpms changed
@@ -356,6 +397,13 @@ arch:rolling@force-docker-prep:
   variables:
     GIT_STRATEGY: none
   <<: *arch_docker_prep
+  when: manual
+  dependencies: []
+
+freebsd:11.2@force-docker-prep:
+  variables:
+    GIT_STRATEGY: none
+  <<: *freebsd_docker_prep
   when: manual
   dependencies: []
 
@@ -465,6 +513,12 @@ arch:rolling@docker-clean:
   variables:
     GIT_STRATEGY: none
     CURRENT_DOCKER_IMAGE: $ARCH_DOCKER_IMAGE
+  <<: *docker_clean
+
+freebsd:11.2@docker-clean:
+  variables:
+    GIT_STRATEGY: none
+    CURRENT_DOCKER_IMAGE: $FREEBSD_DOCKER_IMAGE
   <<: *docker_clean
 
 #################################################################
@@ -632,6 +686,24 @@ ubuntu:18.04@default-build:
 arch:rolling@default-build:
   <<: *arch_template
   <<: *default_build
+
+#
+# FreeBSD
+#
+.freebsd@template: &freebsd_template
+  stage: build
+  image: $FREEBSD_DOCKER_IMAGE:latest
+  variables:
+    MESON_ARGS: '--cross-file freebsd -Ddocumentation=false -Dtests=false -Depoll-dir=/freebsd/usr/local/'
+    # Can't run FreeBSD tests on Linux machine, so NINJA_ARGS shouldn't be "test"
+    NINJA_ARGS: ''
+  <<: *default_artifacts
+  dependencies: []
+
+freebsd:11.2@default-build:
+  <<: *freebsd_template
+  <<: *default_build
+
 
 #
 # deploy
