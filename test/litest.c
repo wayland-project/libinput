@@ -1895,7 +1895,7 @@ udev_wait_for_device_event(struct udev_monitor *udev_monitor,
 		udev_device = udev_monitor_receive_device(udev_monitor);
 		litest_assert_notnull(udev_device);
 		udev_action = udev_device_get_action(udev_device);
-		if (!streq(udev_action, udev_event)) {
+		if (!udev_action || !streq(udev_action, udev_event)) {
 			udev_device_unref(udev_device);
 			continue;
 		}
